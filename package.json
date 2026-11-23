@@ -1,0 +1,183 @@
+{
+  "name": "culprit-sql",
+  "publisher": "culpritsql",
+  "displayName": "Culprit SQL",
+  "description": "Interactive SQL execution plan diagrams, side-by-side plan diffs, deadlock cycle graphs, and SQL migration safety checks powered locally by WebAssembly.",
+  "version": "0.5.6",
+  "license": "MIT",
+  "icon": "media/icon.png",
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": [
+    "Visualization",
+    "Linters",
+    "Other"
+  ],
+  "keywords": [
+    "sql",
+    "postgres",
+    "postgresql",
+    "sql-server",
+    "mssql",
+    "sqlplan",
+    "mysql",
+    "mariadb",
+    "yugabytedb",
+    "sqlite",
+    "explain",
+    "execution-plan",
+    "query-plan",
+    "deadlock"
+  ],
+  "homepage": "https://explain.culpritsql.com",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/culpritsql/culprit-vscode.git"
+  },
+  "bugs": {
+    "url": "https://github.com/culpritsql/culprit-vscode/issues"
+  },
+  "qna": "https://github.com/culpritsql/culprit-vscode/issues",
+  "main": "./dist/extension.js",
+  "activationEvents": [
+    "onLanguage:sql",
+    "onLanguage:pgsql",
+    "onLanguage:mysql",
+    "onLanguage:mssql",
+    "onLanguage:typescript",
+    "onLanguage:typescriptreact",
+    "onLanguage:javascript",
+    "onLanguage:javascriptreact"
+  ],
+  "contributes": {
+    "customEditors": [
+      {
+        "viewType": "culprit.planEditor",
+        "displayName": "Culprit Execution Plan & Deadlock Viewer",
+        "priority": "default",
+        "selector": [
+          {
+            "filenamePattern": "*.sqlplan"
+          },
+          {
+            "filenamePattern": "*.explain.json"
+          },
+          {
+            "filenamePattern": "*.plan.json"
+          },
+          {
+            "filenamePattern": "*.xdl"
+          }
+        ]
+      }
+    ],
+    "commands": [
+      {
+        "command": "culprit.openExplainStudio",
+        "title": "Culprit: Open SQL Plan & Deadlock Studio",
+        "icon": {
+          "light": "media/icon.svg",
+          "dark": "media/icon.svg"
+        }
+      },
+      {
+        "command": "culprit.explainClipboard",
+        "title": "Culprit: Explain Plan or Deadlock from Clipboard"
+      },
+      {
+        "command": "culprit.explainSelection",
+        "title": "Culprit: Explain Selected Plan / Deadlock"
+      },
+      {
+        "command": "culprit.comparePlans",
+        "title": "Culprit: Compare Two Execution Plans"
+      },
+      {
+        "command": "culprit.openOnline",
+        "title": "Culprit: Open Redacted Link on explain.culpritsql.com"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "culprit.openExplainStudio",
+        "key": "ctrl+shift+e",
+        "mac": "cmd+shift+e",
+        "when": "editorFocus"
+      }
+    ],
+    "menus": {
+      "explorer/context": [
+        {
+          "command": "culprit.comparePlans",
+          "when": "resourceExtname == .sqlplan || resourceExtname == .json || resourceExtname == .xdl",
+          "group": "navigation@20"
+        }
+      ],
+      "editor/title": [
+        {
+          "command": "culprit.openExplainStudio",
+          "when": "editorLangId == sql || editorLangId == pgsql || editorLangId == mysql || editorLangId == mssql",
+          "group": "navigation"
+        },
+        {
+          "command": "culprit.comparePlans",
+          "when": "resourceExtname == .sqlplan || resourceFilename =~ /\\.(explain|plan)\\.json$/",
+          "group": "navigation"
+        }
+      ],
+      "editor/context": [
+        {
+          "command": "culprit.explainSelection",
+          "when": "editorHasSelection",
+          "group": "culprit@1"
+        },
+        {
+          "command": "culprit.explainClipboard",
+          "group": "culprit@2"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "Culprit SQL",
+      "properties": {
+        "culprit.codeLens.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show inline Culprit CodeLens actions (Paste EXPLAIN and Compare Plan) above SQL queries and tagged SQL template literals."
+        },
+        "culprit.diagnostics.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Underline risky SQL queries and migrations (UPDATE/DELETE without WHERE, blocking CREATE INDEX, CREATE INDEX CONCURRENTLY inside transactions, non-sargable predicates, leading-wildcard LIKE)."
+        },
+        "culprit.share.redactLiterals": {
+          "type": "boolean",
+          "default": true,
+          "description": "Scrub SQL string and numeric literals before generating shareable links for explain.culpritsql.com or exporting reports."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "typecheck": "tsc --noEmit",
+    "test": "bun test",
+    "vscode:prepublish": "node scripts/build.mjs"
+  },
+  "dependencies": {
+    "@culpritsql/plan-viewer": "^0.5.6",
+    "@culpritsql/plans": "^0.5.6",
+    "lucide-react": "^1.16.0",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.0",
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0",
+    "@types/vscode": "~1.90.0",
+    "esbuild": "^0.25.4",
+    "typescript": "^5.9.0"
+  }
+}

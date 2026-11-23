@@ -1,0 +1,15 @@
+.vscode/**
+.github/**
+assets/**
+src/**
+test/**
+scripts/**
+node_modules/**
+tsconfig.json
+bun.lock
+package-lock.json
+*.ts
+*.tsx
+*.map
+*.vsix
+.gitignore
