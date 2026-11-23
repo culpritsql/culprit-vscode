@@ -37,6 +37,17 @@ Running 100% locally in WebAssembly via [`@culpritsql/plans`](https://github.com
 
 ---
 
+## Interactive Demo Workspace
+
+Open the included [`demo/`](./demo) folder directly in VS Code, Cursor, or Windsurf to test custom plan/deadlock editors, Before vs After plan comparison, inline SQL CodeLens, and migration safety diagnostics immediately:
+
+```sh
+git clone https://github.com/culpritsql/culprit-vscode.git
+code culprit-vscode/demo
+```
+
+---
+
 ## Commands & Keyboard Shortcuts
 
 | Command | Shortcut | Description |

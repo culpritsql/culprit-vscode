@@ -1,0 +1,5 @@
+{
+  "culprit.codeLens.enabled": true,
+  "culprit.diagnostics.enabled": true,
+  "culprit.share.redactLiterals": true
+}

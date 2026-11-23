@@ -1,6 +1,7 @@
 .vscode/**
 .github/**
 assets/**
+demo/**
 src/**
 test/**
 scripts/**

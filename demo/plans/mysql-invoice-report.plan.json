@@ -1,0 +1,38 @@
+{
+  "query_block": {
+    "select_id": 1,
+    "cost_info": {
+      "query_cost": "14829.40"
+    },
+    "ordering_operation": {
+      "using_filesort": true,
+      "cost_info": {
+        "sort_cost": "4210.00"
+      },
+      "table": {
+        "table_name": "invoices",
+        "access_type": "ALL",
+        "possible_keys": [
+          "idx_invoices_account"
+        ],
+        "rows_examined_per_scan": 98420,
+        "rows_produced_per_join": 4210,
+        "filtered": "4.28",
+        "cost_info": {
+          "read_cost": "9635.20",
+          "eval_cost": "984.20",
+          "prefix_cost": "10619.40",
+          "data_read_per_join": "657K"
+        },
+        "used_columns": [
+          "id",
+          "account_id",
+          "status",
+          "amount_cents",
+          "issued_at"
+        ],
+        "attached_condition": "((`billing`.`invoices`.`status` = 'overdue') and (`billing`.`invoices`.`amount_cents` >= 5000))"
+      }
+    }
+  }
+}

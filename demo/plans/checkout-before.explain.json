@@ -1,0 +1,63 @@
+[
+  {
+    "Plan": {
+      "Node Type": "Limit",
+      "Startup Cost": 48210.4,
+      "Total Cost": 48215.9,
+      "Plan Rows": 50,
+      "Plan Width": 96,
+      "Actual Startup Time": 318.4,
+      "Actual Total Time": 319.2,
+      "Actual Rows": 50,
+      "Actual Loops": 1,
+      "Shared Hit Blocks": 4120,
+      "Shared Read Blocks": 18420,
+      "Temp Read Blocks": 2304,
+      "Temp Written Blocks": 2304,
+      "Plans": [
+        {
+          "Node Type": "Sort",
+          "Sort Key": ["o.created_at DESC"],
+          "Sort Method": "external merge",
+          "Sort Space Used": 18432,
+          "Sort Space Type": "Disk",
+          "Startup Cost": 48210.4,
+          "Total Cost": 48285.1,
+          "Plan Rows": 29880,
+          "Plan Width": 96,
+          "Actual Startup Time": 318.1,
+          "Actual Total Time": 318.9,
+          "Actual Rows": 50,
+          "Actual Loops": 1,
+          "Shared Hit Blocks": 4120,
+          "Shared Read Blocks": 18420,
+          "Temp Read Blocks": 2304,
+          "Temp Written Blocks": 2304,
+          "Plans": [
+            {
+              "Node Type": "Seq Scan",
+              "Relation Name": "orders",
+              "Schema": "public",
+              "Alias": "o",
+              "Filter": "((status = 'paid'::text) AND (created_at >= '2026-10-01'::timestamptz))",
+              "Rows Removed by Filter": 1458720,
+              "Startup Cost": 0.0,
+              "Total Cost": 39840.0,
+              "Plan Rows": 3100,
+              "Plan Width": 96,
+              "Actual Startup Time": 0.08,
+              "Actual Total Time": 264.4,
+              "Actual Rows": 41280,
+              "Actual Loops": 1,
+              "Shared Hit Blocks": 4120,
+              "Shared Read Blocks": 18420
+            }
+          ]
+        }
+      ]
+    },
+    "Query Text": "SELECT o.id, o.customer_id, o.total_cents, o.created_at FROM public.orders o WHERE o.status = 'paid' AND o.created_at >= '2026-10-01' ORDER BY o.created_at DESC LIMIT 50;",
+    "Planning Time": 0.84,
+    "Execution Time": 321.6
+  }
+]
