@@ -67,9 +67,9 @@ jobs:
         run: |
           set -euo pipefail
           if [ -n "${VSCE_PAT:-}" ]; then
-            npx --yes @vscode/vsce@latest publish --packagePath "$RUNNER_TEMP/vsix/culprit-sql-${VERSION}.vsix" -p "$VSCE_PAT"
+            npx --yes @vscode/vsce@latest publish --skip-duplicate --packagePath "$RUNNER_TEMP/vsix/culprit-sql-${VERSION}.vsix" -p "$VSCE_PAT"
           else
-            npx --yes @vscode/vsce@latest publish --packagePath "$RUNNER_TEMP/vsix/culprit-sql-${VERSION}.vsix" --oidc
+            npx --yes @vscode/vsce@latest publish --skip-duplicate --packagePath "$RUNNER_TEMP/vsix/culprit-sql-${VERSION}.vsix" --oidc
           fi
       - name: Publish to Open VSX Registry (Cursor & Windsurf)
         env:
@@ -79,7 +79,7 @@ jobs:
           set -euo pipefail
           if [ -n "${OVSX_PAT:-}" ]; then
             npx --yes ovsx@latest create-namespace culpritsql -p "$OVSX_PAT" || true
-            npx --yes ovsx@latest publish "$RUNNER_TEMP/vsix/culprit-sql-${VERSION}.vsix" -p "$OVSX_PAT"
+            npx --yes ovsx@latest publish --skip-duplicate "$RUNNER_TEMP/vsix/culprit-sql-${VERSION}.vsix" -p "$OVSX_PAT"
           else
             echo "OVSX_PAT secret not configured; skipping Open VSX publish."
           fi
