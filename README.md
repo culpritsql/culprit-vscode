@@ -8,8 +8,8 @@
 
 <br />
 
-[![VS Code Marketplace](https://img.shields.io/visual-studio-marketplace/v/culpritsql.culprit-sql?style=flat-square&label=VS%20Code%20Marketplace&color=ffcf33&labelColor=181715)](https://marketplace.visualstudio.com/items?itemName=culpritsql.culprit-sql)
-[![Open VSX](https://img.shields.io/open-vsx/v/culpritsql/culprit-sql?style=flat-square&label=Open%20VSX&color=ffcf33&labelColor=181715)](https://open-vsx.org/extension/culpritsql/culprit-sql)
+[![VS Code Marketplace](https://img.shields.io/github/v/release/culpritsql/culprit-vscode?style=flat-square&label=VS%20Code%20Marketplace&color=ffcf33&labelColor=181715)](https://marketplace.visualstudio.com/items?itemName=culpritsql.culprit-sql)
+[![Open VSX](https://img.shields.io/github/v/release/culpritsql/culprit-vscode?style=flat-square&label=Open%20VSX&color=ffcf33&labelColor=181715)](https://open-vsx.org/extension/culpritsql/culprit-sql)
 [![Wasm Parser](https://img.shields.io/npm/v/%40culpritsql%2Fplans?style=flat-square&label=%40culpritsql%2Fplans&color=dea584&labelColor=181715)](https://www.npmjs.com/package/@culpritsql/plans)
 [![Plan Viewer](https://img.shields.io/npm/v/%40culpritsql%2Fplan-viewer?style=flat-square&label=%40culpritsql%2Fplan-viewer&color=61dafb&labelColor=181715)](https://www.npmjs.com/package/@culpritsql/plan-viewer)
 [![License: MIT](https://img.shields.io/badge/license-MIT-4cbb84?style=flat-square&labelColor=181715)](./LICENSE)
@@ -34,6 +34,26 @@ Running 100% locally in WebAssembly via [`@culpritsql/plans`](https://github.com
   - Flags risky SQL constructs before production deploy: `UPDATE` / `DELETE` without `WHERE`, `CREATE INDEX` without `CONCURRENTLY` on existing tables, `CREATE INDEX CONCURRENTLY` inside `BEGIN ... COMMIT`, non-sargable `WHERE LOWER(col) = ...` predicates, and leading-wildcard `LIKE '%...'` filters.
 - **Redacted Share Links & Standalone Exports**: Export single-file HTML or Markdown reports, or generate compressed `explain.culpritsql.com/#s=z1...` URLs with SQL string and numeric literals scrubbed automatically.
 - **Native Theme Sync**: Follows VS Code, Cursor, and Windsurf Dark, Light, and High Contrast themes automatically.
+
+---
+
+## Screenshots
+
+### Custom Execution Plan & Deadlock Viewer
+
+Double-click any `.sqlplan`, `.explain.json`, `.plan.json`, or `.xdl` file to inspect interactive operator graphs, bottleneck fixes, and lock wait cycles with one-click redacted exports:
+
+<p align="center">
+  <img alt="Culprit SQL custom deadlock graph viewer inside VS Code" src="https://raw.githubusercontent.com/culpritsql/culprit-vscode/main/assets/vscode-deadlock.png" width="100%">
+</p>
+
+### Inline SQL Safety Diagnostics & CodeLens
+
+Catch blocking `CREATE INDEX`, `CREATE INDEX CONCURRENTLY` inside transactions, unbounded `UPDATE`/`DELETE`, non-sargable `LOWER(col)` filters, and leading-wildcard `LIKE '%...'` scans directly in `.sql` migrations and TypeScript `sql\`...\`` / `Prisma.$queryRaw\`...\`` queries:
+
+<p align="center">
+  <img alt="Culprit SQL inline migration warnings, CodeLens, hover tooltip, and Problems panel in VS Code" src="https://raw.githubusercontent.com/culpritsql/culprit-vscode/main/assets/vscode-sql-warnings.png" width="100%">
+</p>
 
 ---
 

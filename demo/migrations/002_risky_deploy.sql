@@ -11,3 +11,9 @@ CREATE INDEX idx_invoices_billing_email ON public.invoices (billing_email);
 
 -- 3. WARNING: Unbounded DELETE statement with no top-level WHERE predicate
 DELETE FROM public.expired_sessions;
+
+-- 4. WARNING: Non-sargable LOWER() wrapper + leading-wildcard LIKE prevent B-tree index seeks
+SELECT id, customer_id, total_cents, notes
+FROM public.invoices
+WHERE LOWER(billing_email) = 'vip@acme.io'
+   OR notes LIKE '%refund%';
