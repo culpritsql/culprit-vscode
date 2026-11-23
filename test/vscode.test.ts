@@ -236,7 +236,31 @@ describe("shareLink & detectInputMode: z1 deflate-raw links and SQL literal reda
     expect(redacted).not.toContain("secret@corp.io");
     expect(redacted).not.toContain("99812");
     expect(redacted).toContain('EstimateRows="250"');
-    expect(scrubSqlLiterals("WHERE code = 'AB''CD' AND retries = 5")).toBe("WHERE code = '?' AND retries = ?");
+    expect(scrubSqlLiterals("WHERE code = 'AB''CD' AND retries = 5 AND id = $2")).toBe(
+      "WHERE code = '?' AND retries = ? AND id = $2",
+    );
+  });
+
+  test("round-trips multi-chunk payloads without Web Streams CompressionStream backpressure deadlock", async () => {
+    const bigPlan = JSON.stringify(
+      Array.from({ length: 350 }, (_, i) => ({
+        op: `Partition_${i}`,
+        Filter: `(org_id = ${5000 + i} AND secret = 'tok_${i}')`,
+      })),
+    );
+    const share = await buildShareUrl({
+      mode: "plan",
+      title: "Partitioned Plan",
+      engine: "postgres",
+      planText: bigPlan,
+      redact: true,
+    });
+    expect(share.ok).toBe(true);
+    if (!share.ok) return;
+    expect(share.url).not.toContain("tok_0");
+    const decoded = await decodeShareHash(share.url);
+    expect(decoded?.t).toBe("Partitioned Plan");
+    expect(JSON.parse(decoded!.p!).length).toBe(350);
   });
 });
 
