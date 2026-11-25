@@ -8,6 +8,7 @@ import {
 import {
   CulpritPlanEditorProvider,
   CulpritStudioController,
+  CulpritXelEditorProvider,
   type StudioLaunchOptions,
 } from "./planEditorProvider";
 import { buildShareUrl, detectInputMode } from "./shareLink";
@@ -15,7 +16,8 @@ import { buildShareUrl, detectInputMode } from "./shareLink";
 function looksLikePlanOrDeadlockPayload(text: string): boolean {
   const trimmed = text.trim();
   if (!trimmed) return false;
-  if (detectInputMode(trimmed) === "deadlock") return true;
+  const detected = detectInputMode(trimmed);
+  if (detected === "deadlock" || detected === "events") return true;
   if (trimmed.startsWith("<ShowPlanXML") || trimmed.includes("<ShowPlanXML")) return true;
   if (trimmed.startsWith("[") || trimmed.startsWith("{")) return true;
   if (/^\s*(?:QUERY PLAN|->\s|Seq Scan|Index Scan|Index Only Scan|Nested Loop|Hash Join|Limit|Sort|Aggregate|Gather)/im.test(trimmed)) {
@@ -49,6 +51,7 @@ async function readUriUtf8(uri: vscode.Uri): Promise<string> {
 
 export function activate(context: vscode.ExtensionContext): void {
   const planEditorProvider = new CulpritPlanEditorProvider(context.extensionUri);
+  const xelEditorProvider = new CulpritXelEditorProvider(context.extensionUri);
   const studioController = new CulpritStudioController(context.extensionUri);
   const codeLensProvider = new CulpritCodeLensProvider();
   const diagnostics = vscode.languages.createDiagnosticCollection("culprit-sql");
@@ -57,6 +60,14 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.window.registerCustomEditorProvider(
       CulpritPlanEditorProvider.viewType,
       planEditorProvider,
+      {
+        webviewOptions: { retainContextWhenHidden: true },
+        supportsMultipleEditorsPerDocument: false,
+      },
+    ),
+    vscode.window.registerCustomEditorProvider(
+      CulpritXelEditorProvider.viewType,
+      xelEditorProvider,
       {
         webviewOptions: { retainContextWhenHidden: true },
         supportsMultipleEditorsPerDocument: false,
@@ -143,7 +154,12 @@ export function activate(context: vscode.ExtensionContext): void {
       studioController.openStudio({
         mode,
         text: clip,
-        title: mode === "deadlock" ? "Clipboard Deadlock" : "Clipboard Plan",
+        title:
+          mode === "deadlock"
+            ? "Clipboard Deadlock"
+            : mode === "events"
+              ? "Clipboard Extended Events"
+              : "Clipboard Plan",
       });
     }),
   );
@@ -240,7 +256,9 @@ export function activate(context: vscode.ExtensionContext): void {
   context.subscriptions.push(
     vscode.commands.registerCommand("culprit.openOnline", async () => {
       const activeWebviewPanel =
-        planEditorProvider.getActivePanel() ?? studioController.getActivePanel();
+        planEditorProvider.getActivePanel() ??
+        xelEditorProvider.getActivePanel() ??
+        studioController.getActivePanel();
       if (activeWebviewPanel) {
         studioController.requestShareFromActiveWebview(activeWebviewPanel);
         return;
@@ -254,13 +272,22 @@ export function activate(context: vscode.ExtensionContext): void {
 
       if (!raw) {
         vscode.window.showInformationMessage(
-          "Select an execution plan or deadlock report (or open one in Culprit Studio) to share on explain.culpritsql.com.",
+          "Select an execution plan, deadlock report, or Extended Events capture (or open one in Culprit Studio) to share on explain.culpritsql.com.",
         );
         return;
       }
 
       const fileName = editor ? path.basename(editor.document.fileName) : undefined;
       const mode = detectInputMode(raw, fileName);
+      if (mode === "events") {
+        const panel = studioController.openStudio({
+          mode: "events",
+          text: raw,
+          title: fileName ? fileName.replace(/\.[^.]+$/, "") : "Extended Events",
+        });
+        studioController.requestShareFromActiveWebview(panel);
+        return;
+      }
       const redact = vscode.workspace
         .getConfiguration("culprit")
         .get<boolean>("share.redactLiterals", true);

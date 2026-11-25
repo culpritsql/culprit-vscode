@@ -26,8 +26,8 @@ Running 100% locally in WebAssembly via [`@culpritsql/plans`](https://github.com
 
 ## Feature Highlights
 
-- **Zero-Click Custom Editor**: Double-click any `*.sqlplan`, `*.explain.json`, `*.plan.json`, or `*.xdl` file in Explorer to open an interactive operator flow diagram or deadlock wait graph. Live edits stream directly into the viewer.
-- **Interactive Plan & Deadlock Studio (`Cmd+Shift+E` / `Ctrl+Shift+E`)**: Paste `EXPLAIN (ANALYZE, BUFFERS)` output, Showplan XML, MySQL `EXPLAIN ANALYZE`, or server deadlock logs without creating scratch files.
+- **Zero-Click Custom Editor**: Double-click any `*.sqlplan`, `*.explain.json`, `*.plan.json`, `*.xdl`, or binary SQL Server `*.xel` Extended Events file in Explorer to open an interactive operator flow diagram, deadlock wait graph, or Extended Events inspector. Live text edits stream directly into the viewer.
+- **Interactive Plan, Deadlock & Events Studio (`Cmd+Shift+E` / `Ctrl+Shift+E`)**: Paste `EXPLAIN (ANALYZE, BUFFERS)` output, Showplan XML, MySQL `EXPLAIN ANALYZE`, server deadlock logs, or exported SQL Server Extended Events XML (`<events>` / `<RingBufferTarget>`) without creating scratch files.
 - **Side-by-Side Structural Plan Diff**: Select two plan files in Explorer and click **Culprit: Compare Two Execution Plans** to inspect measured speedup, cost ratio, `Seq Scan` to `Index Scan` access flips, and operator property changes with synchronized pan and zoom.
 - **Inline CodeLens & SQL Migration Safety Diagnostics**:
   - Adds `⚡ Culprit: Paste EXPLAIN · ⇄ Compare Plan` lenses above queries in `.sql` files and `sql\`...\`` / `Prisma.$queryRaw\`...\`` template literals in TypeScript and JavaScript.
@@ -85,7 +85,7 @@ code culprit-vscode/demo
 | Engine | Execution Plan Formats | Deadlock Formats |
 | :--- | :--- | :--- |
 | **PostgreSQL & TimescaleDB** | `EXPLAIN (ANALYZE, BUFFERS, WAL, VERBOSE, FORMAT JSON)` & plain `psql` text | `ERROR: deadlock detected` + `DETAIL:` server log excerpts |
-| **SQL Server & Azure SQL** | `.sqlplan` Showplan XML (Estimated & Actual runtime counters, missing indexes, spills) | `.xdl` / Extended Events `<deadlock>` XML graphs |
+| **SQL Server & Azure SQL** | `.sqlplan` Showplan XML (Estimated & Actual runtime counters, missing indexes, spills) | `.xdl`, `.xel` binary Extended Events captures, & `<deadlock>` / `<RingBufferTarget>` XML |
 | **MySQL & MariaDB** | `EXPLAIN FORMAT=JSON` & MySQL 8.0+ `EXPLAIN ANALYZE` tree text | `SHOW ENGINE INNODB STATUS` (`LATEST DETECTED DEADLOCK`) |
 | **YugabyteDB** | `EXPLAIN (ANALYZE, DIST, FORMAT JSON)` with DocDB RPC & storage read metrics | PostgreSQL-compatible deadlock log excerpts |
 | **SQLite / LibSQL** | `EXPLAIN QUERY PLAN` (`--SCAN` / `--SEARCH` tree and classic tabular output) | N/A |

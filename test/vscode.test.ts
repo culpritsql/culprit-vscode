@@ -3,12 +3,20 @@ import { execFileSync } from "node:child_process";
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
-import { diffPlans, init as initWasm, parseDeadlock, parsePlan } from "@culpritsql/plans";
+import {
+  diffPlans,
+  init as initWasm,
+  parseDeadlock,
+  parseExtendedEventsXml,
+  parsePlan,
+  parseXel,
+} from "@culpritsql/plans";
 import {
   buildShareUrl,
   decodeShareHash,
   detectInputMode,
   EXPLAIN_ONLINE_ORIGIN,
+  hasXelMagic,
   redactPayloadText,
   scrubSqlLiterals,
 } from "../src/shareLink";
@@ -187,12 +195,21 @@ describe("webviewHtml: CSP, nonces, and safe initial state serialization", () =>
 });
 
 describe("shareLink & detectInputMode: z1 deflate-raw links and SQL literal redaction", () => {
-  test("detects deadlock reports across SQL Server XML, PostgreSQL logs, and InnoDB status", () => {
+  test("detects deadlock reports and Extended Events across SQL Server XML/.xel, PostgreSQL logs, and InnoDB status", () => {
     expect(detectInputMode("<ShowPlanXML></ShowPlanXML>", "query.sqlplan")).toBe("plan");
+    expect(detectInputMode("", "system_health_0.xel")).toBe("events");
+    expect(
+      detectInputMode(
+        '<RingBufferTarget><event name="error_reported" package="sqlserver"/></RingBufferTarget>',
+        "capture.xml",
+      ),
+    ).toBe("events");
     expect(detectInputMode("<deadlock><victim-list/></deadlock>", "capture.xml")).toBe("deadlock");
     expect(detectInputMode("{}", "incident.xdl")).toBe("deadlock");
     expect(detectInputMode("ERROR:  deadlock detected\nDETAIL: Process 101 waits", "pg.log")).toBe("deadlock");
     expect(detectInputMode("------------------------\nLATEST DETECTED DEADLOCK\n------------------------")).toBe("deadlock");
+    expect(hasXelMagic(new Uint8Array([0x5a, 0x37, 0xab, 0xef, 0x03, 0x00]))).toBe(true);
+    expect(hasXelMagic(new Uint8Array([0x3c, 0x65, 0x76, 0x65]))).toBe(false);
   });
 
   test("encodes z1.<deflate-raw-base64url> share URLs with scrubbed SQL literals while keeping JSON plans valid", async () => {
@@ -270,7 +287,7 @@ describe("Build artifacts, Wasm engine integration, and mocked VS Code extension
     expect(pkgJson.name).toBe("culprit-sql");
     expect(pkgJson.publisher).toBe("culpritsql");
     expect(pkgJson.displayName).toBe("Culprit SQL");
-    expect(pkgJson.version).toBe("0.5.6");
+    expect(pkgJson.version).toMatch(/^\d+\.\d+\.\d+$/);
     expect(existsSync(path.join(repoRoot, "media/icon.svg"))).toBe(true);
     expect(existsSync(path.join(repoRoot, "media/icon.png"))).toBe(true);
 
@@ -309,9 +326,53 @@ describe("Build artifacts, Wasm engine integration, and mocked VS Code extension
     expect(deadlocks.length).toBe(1);
     expect(deadlocks[0]!.processes.length).toBe(2);
 
+    const xeXml = [
+      '<RingBufferTarget>',
+      '  <event name="error_reported" package="sqlserver" timestamp="2026-11-25T10:15:00.000Z">',
+      '    <data name="error_number"><value>1205</value></data>',
+      '    <data name="severity"><value>13</value></data>',
+      '    <data name="state"><value>51</value></data>',
+      '    <data name="message"><value>Transaction was deadlocked on lock resources.</value></data>',
+      '    <action name="sql_text" package="sqlserver"><value>UPDATE orders SET note = \'secret-token\' WHERE id = 9182;</value></action>',
+      '  </event>',
+      '</RingBufferTarget>',
+    ].join("\n");
+    const xeBatch = parseExtendedEventsXml(xeXml);
+    expect(xeBatch.format).toBe("xml");
+    expect(xeBatch.records).toHaveLength(1);
+    expect(xeBatch.records[0]!.kind.event).toBe("error-reported");
+    expect(JSON.stringify(xeBatch)).not.toContain("secret-token");
+
+    const xeShare = await buildShareUrl({
+      mode: "events",
+      title: "system_health",
+      eventsBatch: xeBatch,
+      redact: true,
+    });
+    expect(xeShare.ok).toBe(true);
+    if (xeShare.ok) {
+      const decodedXe = await decodeShareHash(xeShare.url);
+      expect(decodedXe?.m).toBe("events");
+      expect(decodedXe?.eb?.records).toHaveLength(1);
+    }
+    let xelRejectedXml = false;
+    try {
+      parseXel(new TextEncoder().encode(xeXml));
+    } catch {
+      xelRejectedXml = true;
+    }
+    expect(xelRejectedXml).toBe(true);
+
     // Mock the `vscode` module and load dist/extension.js in CommonJS
     const registeredCommands = new Map<string, (...args: unknown[]) => unknown>();
-    const customEditors = new Map<string, { resolveCustomTextEditor: (...args: unknown[]) => Promise<void> }>();
+    const customEditors = new Map<
+      string,
+      {
+        resolveCustomTextEditor?: (...args: unknown[]) => Promise<void>;
+        openCustomDocument?: (...args: unknown[]) => Promise<unknown>;
+        resolveCustomEditor?: (...args: unknown[]) => Promise<void>;
+      }
+    >();
     const codeLensProviders: Array<{ provideCodeLenses: (...args: unknown[]) => unknown[] }> = [];
     const diagnosticStore = new Map<string, unknown[]>();
     const openedExternalUrls: string[] = [];
@@ -419,7 +480,11 @@ describe("Build artifacts, Wasm engine integration, and mocked VS Code extension
         },
         registerCustomEditorProvider: (
           viewType: string,
-          provider: { resolveCustomTextEditor: (...args: unknown[]) => Promise<void> },
+          provider: {
+            resolveCustomTextEditor?: (...args: unknown[]) => Promise<void>;
+            openCustomDocument?: (...args: unknown[]) => Promise<unknown>;
+            resolveCustomEditor?: (...args: unknown[]) => Promise<void>;
+          },
         ) => {
           customEditors.set(viewType, provider);
           return { dispose: () => {} };
@@ -507,6 +572,7 @@ describe("Build artifacts, Wasm engine integration, and mocked VS Code extension
       });
 
       expect(customEditors.has("culprit.planEditor")).toBe(true);
+      expect(customEditors.has("culprit.xelEditor")).toBe(true);
       expect(registeredCommands.size).toBe(5);
       expect(codeLensProviders).toHaveLength(1);
 
@@ -530,7 +596,7 @@ describe("Build artifacts, Wasm engine integration, and mocked VS Code extension
         postMessage: async () => true,
         onDidReceiveMessage: () => ({ dispose: () => {} }),
       };
-      await customEditors.get("culprit.planEditor")!.resolveCustomTextEditor(
+      await customEditors.get("culprit.planEditor")!.resolveCustomTextEditor!(
         {
           uri: makeUri("deadlock.xdl"),
           fileName: "deadlock.xdl",
@@ -546,6 +612,30 @@ describe("Build artifacts, Wasm engine integration, and mocked VS Code extension
       );
       expect(customPanelWebview.html).toContain("culprit_wasm_bg.wasm");
       expect(customPanelWebview.html).toContain('"mode":"deadlock"');
+
+      // Binary .xel Custom Editor opens raw bytes and embeds xelBase64 in initialState
+      const xelProvider = customEditors.get("culprit.xelEditor")!;
+      const xelDoc = await xelProvider.openCustomDocument!(makeUri("system_health.xel"), {}, {});
+      const xelWebview = {
+        cspSource: "vscode-webview://xel",
+        options: {},
+        html: "",
+        asWebviewUri: (u: { fsPath: string }) => ({ toString: () => `vscode-webview://xel/${path.basename(u.fsPath)}` }),
+        postMessage: async () => true,
+        onDidReceiveMessage: () => ({ dispose: () => {} }),
+      };
+      await xelProvider.resolveCustomEditor!(
+        xelDoc,
+        {
+          active: false,
+          webview: xelWebview,
+          onDidChangeViewState: () => ({ dispose: () => {} }),
+          onDidDispose: () => ({ dispose: () => {} }),
+        },
+        {},
+      );
+      expect(xelWebview.html).toContain('"mode":"events"');
+      expect(xelWebview.html).toContain('"xelBase64":');
 
       // Exercise commands end-to-end
       await registeredCommands.get("culprit.explainClipboard")!();

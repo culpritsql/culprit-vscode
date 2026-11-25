@@ -1,6 +1,6 @@
 import type { StudioMode, WebviewInitialState } from "./webviewHtml";
 
-export type FileSlot = "plan" | "before" | "after" | "deadlock";
+export type FileSlot = "plan" | "before" | "after" | "deadlock" | "events";
 
 export type HostToWebviewMessage =
   | {
@@ -9,7 +9,7 @@ export type HostToWebviewMessage =
     }
   | {
       type: "documentChanged";
-      mode: "plan" | "deadlock";
+      mode: "plan" | "deadlock" | "events";
       fileName: string;
       text: string;
     }
@@ -17,7 +17,8 @@ export type HostToWebviewMessage =
       type: "filePicked";
       slot: FileSlot;
       name: string;
-      text: string;
+      text?: string;
+      xelBase64?: string;
     }
   | {
       type: "requestShareOnline";

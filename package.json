@@ -2,8 +2,8 @@
   "name": "culprit-sql",
   "publisher": "culpritsql",
   "displayName": "Culprit SQL",
-  "description": "Interactive SQL execution plan diagrams, side-by-side plan diffs, deadlock cycle graphs, and SQL migration safety checks powered locally by WebAssembly.",
-  "version": "0.5.7",
+  "description": "Interactive SQL execution plan diagrams, side-by-side plan diffs, deadlock cycle graphs, Extended Events (.xel) inspection, and SQL migration safety checks powered locally by WebAssembly.",
+  "version": "0.6.0",
   "license": "MIT",
   "icon": "media/icon.png",
   "engines": {
@@ -28,7 +28,9 @@
     "explain",
     "execution-plan",
     "query-plan",
-    "deadlock"
+    "deadlock",
+    "xel",
+    "extended-events"
   ],
   "homepage": "https://explain.culpritsql.com",
   "repository": {
@@ -68,6 +70,16 @@
           },
           {
             "filenamePattern": "*.xdl"
+          }
+        ]
+      },
+      {
+        "viewType": "culprit.xelEditor",
+        "displayName": "Culprit Extended Events (.xel) Viewer",
+        "priority": "default",
+        "selector": [
+          {
+            "filenamePattern": "*.xel"
           }
         ]
       }
@@ -166,8 +178,8 @@
     "vscode:prepublish": "node scripts/build.mjs"
   },
   "dependencies": {
-    "@culpritsql/plan-viewer": "^0.5.8",
-    "@culpritsql/plans": "^0.5.7",
+    "@culpritsql/plan-viewer": "^0.6.0",
+    "@culpritsql/plans": "^0.6.0",
     "lucide-react": "^1.16.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0"

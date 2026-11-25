@@ -1,7 +1,7 @@
 import * as path from "node:path";
 import * as vscode from "vscode";
 import type { FileSlot, HostToWebviewMessage, WebviewToHostMessage } from "./protocol";
-import { detectInputMode, EXPLAIN_ONLINE_ORIGIN } from "./shareLink";
+import { decodeTextBytes, detectInputMode, EXPLAIN_ONLINE_ORIGIN, hasXelMagic } from "./shareLink";
 import { buildWebviewHtml, type StudioMode, type WebviewInitialState } from "./webviewHtml";
 
 function getRedactSetting(): boolean {
@@ -86,22 +86,38 @@ async function handleWebviewMessage(
     case "pickFile": {
       const uris = await vscode.window.showOpenDialog({
         canSelectMany: false,
-        openLabel: "Load Execution Plan or Deadlock",
+        openLabel: "Load Execution Plan, Deadlock, or .xel",
         filters: {
-          "Execution Plans & Deadlocks": ["sqlplan", "json", "xdl", "xml", "txt", "log"],
+          "Execution Plans, Deadlocks & Extended Events": [
+            "sqlplan",
+            "xel",
+            "json",
+            "xdl",
+            "xml",
+            "txt",
+            "log",
+          ],
           "All Files": ["*"],
         },
       });
       const uri = uris?.[0];
       if (!uri) return;
       const rawBytes = await vscode.workspace.fs.readFile(uri);
-      const text = new TextDecoder("utf-8").decode(rawBytes);
-      const reply: HostToWebviewMessage = {
-        type: "filePicked",
-        slot: msg.slot,
-        name: path.basename(uri.fsPath),
-        text,
-      };
+      const pickedName = path.basename(uri.fsPath);
+      const isXel = /\.xel$/i.test(pickedName) || hasXelMagic(rawBytes);
+      const reply: HostToWebviewMessage = isXel
+        ? {
+            type: "filePicked",
+            slot: msg.slot,
+            name: pickedName,
+            xelBase64: Buffer.from(rawBytes).toString("base64"),
+          }
+        : {
+            type: "filePicked",
+            slot: msg.slot,
+            name: pickedName,
+            text: decodeTextBytes(rawBytes),
+          };
       await panel.webview.postMessage(reply);
       break;
     }
@@ -194,10 +210,95 @@ export class CulpritPlanEditorProvider implements vscode.CustomTextEditorProvide
   }
 }
 
+export interface CulpritXelDocument extends vscode.CustomDocument {
+  readonly bytes: Uint8Array;
+}
+
+/**
+ * CustomReadonlyEditorProvider for binary SQL Server Extended Events (`.xel`) files.
+ */
+export class CulpritXelEditorProvider implements vscode.CustomReadonlyEditorProvider<CulpritXelDocument> {
+  public static readonly viewType = "culprit.xelEditor";
+
+  private activePanel: vscode.WebviewPanel | null = null;
+
+  constructor(private readonly extensionUri: vscode.Uri) {}
+
+  public getActivePanel(): vscode.WebviewPanel | null {
+    return this.activePanel?.active ? this.activePanel : null;
+  }
+
+  public async openCustomDocument(
+    uri: vscode.Uri,
+    _openContext: vscode.CustomDocumentOpenContext,
+    _token: vscode.CancellationToken,
+  ): Promise<CulpritXelDocument> {
+    const bytes = await vscode.workspace.fs.readFile(uri);
+    return {
+      uri,
+      bytes,
+      dispose: () => {},
+    };
+  }
+
+  public async resolveCustomEditor(
+    document: CulpritXelDocument,
+    webviewPanel: vscode.WebviewPanel,
+    _token: vscode.CancellationToken,
+  ): Promise<void> {
+    const assets = configureWebviewAssets(webviewPanel.webview, this.extensionUri);
+    const fileName = path.basename(document.uri.fsPath);
+
+    const initialState: WebviewInitialState = {
+      kind: "document",
+      mode: "events",
+      title: fileName.replace(/\.[^.]+$/, ""),
+      fileName,
+      xelBase64: Buffer.from(document.bytes).toString("base64"),
+      redactLiterals: getRedactSetting(),
+    };
+
+    webviewPanel.webview.html = buildWebviewHtml({
+      cspSource: webviewPanel.webview.cspSource,
+      scriptUri: assets.scriptUri,
+      styleUri: assets.styleUri,
+      wasmUri: assets.wasmUri,
+      iconUri: assets.iconUri,
+      title: `Culprit: ${fileName}`,
+      initialState,
+    });
+
+    if (webviewPanel.active) {
+      this.activePanel = webviewPanel;
+    }
+
+    const viewStateSub = webviewPanel.onDidChangeViewState((e) => {
+      if (e.webviewPanel.active) {
+        this.activePanel = e.webviewPanel;
+      } else if (this.activePanel === e.webviewPanel) {
+        this.activePanel = null;
+      }
+    });
+
+    const msgSub = webviewPanel.webview.onDidReceiveMessage((msg: WebviewToHostMessage) => {
+      void handleWebviewMessage(msg, webviewPanel);
+    });
+
+    webviewPanel.onDidDispose(() => {
+      if (this.activePanel === webviewPanel) {
+        this.activePanel = null;
+      }
+      viewStateSub.dispose();
+      msgSub.dispose();
+    });
+  }
+}
+
 export interface StudioLaunchOptions {
   mode?: StudioMode;
   title?: string;
   text?: string;
+  xelBase64?: string;
   sql?: string;
   beforeName?: string;
   beforeText?: string;
@@ -225,6 +326,7 @@ export class CulpritStudioController {
       mode: options.mode ?? "plan",
       title: options.title,
       text: options.text,
+      xelBase64: options.xelBase64,
       sql: options.sql,
       beforeName: options.beforeName,
       beforeText: options.beforeText,

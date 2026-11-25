@@ -1,10 +1,12 @@
 import {
   bindPlanViewerClipboard,
   DeadlockViewer,
+  ExtendedEventsViewer,
   PlanDiffViewer,
   PlanViewer,
   type Deadlock,
   type Engine,
+  type ExtendedEventsBatch,
   type Plan,
   type PlanDiff,
 } from "@culpritsql/plan-viewer";
@@ -15,9 +17,12 @@ import {
   init as initPlansWasm,
   ParserError,
   parseDeadlock,
+  parseExtendedEventsXml,
   parsePlan,
+  parseXel,
 } from "@culpritsql/plans";
 import {
+  Activity,
   AlertTriangle,
   ArrowLeftRight,
   ChevronDown,
@@ -34,14 +39,17 @@ import {
   Sparkles,
   Zap,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { type DragEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import type { FileSlot, HostToWebviewMessage, WebviewToHostMessage } from "../protocol";
 import {
   buildShareUrl,
+  decodeTextBytes,
   detectInputMode,
   encodeShareHash,
   EXPLAIN_ONLINE_ORIGIN,
+  hasXelMagic,
+  isExtendedEventsXml,
   scrubSqlLiterals,
   type SharePayloadV1,
 } from "../shareLink";
@@ -74,7 +82,8 @@ type ActiveView =
       rawA: string;
       rawB: string;
     }
-  | { kind: "deadlock"; deadlocks: Deadlock[]; index: number; title: string; rawText: string };
+  | { kind: "deadlock"; deadlocks: Deadlock[]; index: number; title: string; rawText: string }
+  | { kind: "events"; batch: ExtendedEventsBatch; title: string };
 
 const ENGINE_OPTIONS: Array<{ value: EngineChoice; label: string }> = [
   { value: "auto", label: "Auto-detect engine" },
@@ -193,6 +202,44 @@ function buildDeadlockMarkdown(
   return lines.join("\n");
 }
 
+function fromBase64(b64: string): Uint8Array {
+  const binary = atob(b64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  return bytes;
+}
+
+function buildEventsMarkdown(batch: ExtendedEventsBatch, title: string): string {
+  const lines: string[] = [
+    `# SQL Server Extended Events: ${title}`,
+    "",
+    `- **Format**: ${batch.format.toUpperCase()}`,
+    `- **Events parsed**: ${batch.records.length} (${batch.records_examined} examined)`,
+    `- **Deadlock graphs**: ${batch.deadlocks.length}`,
+    "",
+    "## Events",
+    "",
+  ];
+  for (const rec of batch.records) {
+    const kindSummary =
+      rec.kind.event === "error-reported"
+        ? `ERROR ${rec.kind.number} (sev ${rec.kind.severity}, state ${rec.kind.state})`
+        : rec.kind.event === "attention"
+          ? `ATTENTION${rec.kind.native_duration ? ` (${rec.kind.native_duration})` : ""}`
+          : `DEADLOCK (${rec.kind.graphs} graph${rec.kind.graphs === 1 ? "" : "s"})`;
+    lines.push(
+      `### #${rec.position + 1} [${kindSummary}]${rec.timestamp ? ` ${rec.timestamp}` : ""}`,
+    );
+    if (rec.statement.state === "available") {
+      lines.push("", "```sql", rec.statement.text, "```");
+    }
+    lines.push("");
+  }
+  return lines.join("\n");
+}
+
 function wrapStandaloneHtml(title: string, markdownBody: string): string {
   const escaped = markdownBody
     .replace(/&/g, "&amp;")
@@ -227,7 +274,10 @@ function StudioApp({ wasmUri, iconUri, bootState }: { wasmUri: string; iconUri?:
   const [engineChoice, setEngineChoice] = useState<EngineChoice>("auto");
   const [redact, setRedact] = useState<boolean>(bootState.redactLiterals);
   const [drawerOpen, setDrawerOpen] = useState<boolean>(
-    bootState.kind === "studio" && !bootState.text && !(bootState.beforeText && bootState.afterText),
+    bootState.kind === "studio" &&
+      !bootState.text &&
+      !bootState.xelBase64 &&
+      !(bootState.beforeText && bootState.afterText),
   );
 
   const [title, setTitle] = useState<string>(bootState.title ?? "");
@@ -239,6 +289,9 @@ function StudioApp({ wasmUri, iconUri, bootState }: { wasmUri: string; iconUri?:
   const [afterInput, setAfterInput] = useState<string>(bootState.afterText ?? "");
   const [deadlockInput, setDeadlockInput] = useState<string>(
     bootState.mode === "deadlock" ? (bootState.text ?? "") : "",
+  );
+  const [eventsInput, setEventsInput] = useState<string>(
+    bootState.mode === "events" ? (bootState.text ?? "") : "",
   );
 
   const [activeView, setActiveView] = useState<ActiveView | null>(null);
@@ -283,11 +336,79 @@ function StudioApp({ wasmUri, iconUri, bootState }: { wasmUri: string; iconUri?:
     return () => bindPlanViewerClipboard(null);
   }, [showToast]);
 
+  const executeXelParse = useCallback(
+    async (bytes: Uint8Array, opts?: { customTitle?: string; collapseDrawer?: boolean }) => {
+      try {
+        await ensureWasmLoaded(wasmUri);
+        setWasmReady(true);
+        setParseError(null);
+        const batch = parseXel(bytes);
+        const resolvedTitle =
+          (opts?.customTitle ?? title).trim() || `Extended Events (${batch.records.length} events)`;
+        setActiveView({ kind: "events", batch, title: resolvedTitle });
+        if (opts?.collapseDrawer !== false) {
+          setDrawerOpen(false);
+        }
+      } catch (err) {
+        if (err instanceof ParserError) {
+          setParseError({ message: err.error.message, hint: err.error.hint });
+        } else {
+          setParseError({ message: err instanceof Error ? err.message : "Failed to parse .xel file." });
+        }
+        setDrawerOpen(true);
+      }
+    },
+    [title, wasmUri],
+  );
+
+  const executeEventsXmlParse = useCallback(
+    async (raw: string, opts?: { customTitle?: string; collapseDrawer?: boolean }) => {
+      const trimmed = raw.trim();
+      if (!trimmed) {
+        setParseError({
+          message: "Load a binary .xel file or paste SQL Server Extended Events XML (<events> or <RingBufferTarget>).",
+        });
+        return;
+      }
+      try {
+        await ensureWasmLoaded(wasmUri);
+        setWasmReady(true);
+        setParseError(null);
+        const batch = parseExtendedEventsXml(trimmed);
+        const resolvedTitle =
+          (opts?.customTitle ?? title).trim() || `Extended Events (${batch.records.length} events)`;
+        setActiveView({ kind: "events", batch, title: resolvedTitle });
+        if (opts?.collapseDrawer !== false) {
+          setDrawerOpen(false);
+        }
+      } catch (err) {
+        if (err instanceof ParserError) {
+          setParseError({ message: err.error.message, hint: err.error.hint });
+        } else {
+          setParseError({
+            message: err instanceof Error ? err.message : "Failed to parse Extended Events XML.",
+          });
+        }
+        setDrawerOpen(true);
+      }
+    },
+    [title, wasmUri],
+  );
+
   const executePlanParse = useCallback(
     async (raw: string, opts?: { customTitle?: string; sql?: string; engine?: EngineChoice; collapseDrawer?: boolean }) => {
       const trimmed = raw.trim();
       if (!trimmed) {
         setParseError({ message: "Paste an execution plan (.sqlplan XML, JSON, or EXPLAIN text) to visualize." });
+        return;
+      }
+      if (isExtendedEventsXml(trimmed)) {
+        setMode("events");
+        setEventsInput(trimmed);
+        await executeEventsXmlParse(trimmed, {
+          customTitle: opts?.customTitle,
+          collapseDrawer: opts?.collapseDrawer,
+        });
         return;
       }
       try {
@@ -314,7 +435,7 @@ function StudioApp({ wasmUri, iconUri, bootState }: { wasmUri: string; iconUri?:
         setDrawerOpen(true);
       }
     },
-    [engineChoice, sqlInput, title, wasmUri],
+    [engineChoice, executeEventsXmlParse, sqlInput, title, wasmUri],
   );
 
   const executeCompareParse = useCallback(
@@ -379,6 +500,12 @@ function StudioApp({ wasmUri, iconUri, bootState }: { wasmUri: string; iconUri?:
         });
         return;
       }
+      if (isExtendedEventsXml(trimmed)) {
+        setMode("events");
+        setEventsInput(trimmed);
+        await executeEventsXmlParse(trimmed, opts);
+        return;
+      }
       try {
         await ensureWasmLoaded(wasmUri);
         setWasmReady(true);
@@ -410,7 +537,7 @@ function StudioApp({ wasmUri, iconUri, bootState }: { wasmUri: string; iconUri?:
         setDrawerOpen(true);
       }
     },
-    [title, wasmUri],
+    [executeEventsXmlParse, title, wasmUri],
   );
 
   const applyIncomingState = useCallback(
@@ -421,6 +548,15 @@ function StudioApp({ wasmUri, iconUri, bootState }: { wasmUri: string; iconUri?:
       setTitle(state.title ?? "");
       if (state.sql !== undefined) setSqlInput(state.sql);
       setParseError(null);
+
+      if (state.xelBase64) {
+        setMode("events");
+        await executeXelParse(fromBase64(state.xelBase64), {
+          customTitle: state.title,
+          collapseDrawer: true,
+        });
+        return;
+      }
 
       if (state.mode === "plan") {
         const text = state.text ?? "";
@@ -455,6 +591,18 @@ function StudioApp({ wasmUri, iconUri, bootState }: { wasmUri: string; iconUri?:
           setActiveView(null);
           setDrawerOpen(true);
         }
+      } else if (state.mode === "events") {
+        const eText = state.text ?? "";
+        setEventsInput(eText);
+        if (eText.trim()) {
+          await executeEventsXmlParse(eText, {
+            customTitle: state.title,
+            collapseDrawer: true,
+          });
+        } else {
+          setActiveView(null);
+          setDrawerOpen(true);
+        }
       } else if (state.mode === "deadlock") {
         const dText = state.text ?? "";
         setDeadlockInput(dText);
@@ -469,7 +617,7 @@ function StudioApp({ wasmUri, iconUri, bootState }: { wasmUri: string; iconUri?:
         }
       }
     },
-    [executeCompareParse, executeDeadlockParse, executePlanParse],
+    [executeCompareParse, executeDeadlockParse, executeEventsXmlParse, executePlanParse, executeXelParse],
   );
 
   const handleShareOnline = useCallback(
@@ -535,6 +683,13 @@ function StudioApp({ wasmUri, iconUri, bootState }: { wasmUri: string; iconUri?:
             afterText: pb,
             redact: shouldRedact,
           });
+        } else if (activeView.kind === "events") {
+          urlResult = await buildShareUrl({
+            mode: "events",
+            title: activeView.title,
+            eventsBatch: activeView.batch,
+            redact: shouldRedact,
+          });
         } else {
           urlResult = await buildShareUrl({
             mode: "deadlock",
@@ -598,7 +753,10 @@ function StudioApp({ wasmUri, iconUri, bootState }: { wasmUri: string; iconUri?:
         const nextTitle = msg.fileName.replace(/\.[^.]+$/, "");
         setTitle(nextTitle);
         setMode(msg.mode);
-        if (msg.mode === "deadlock") {
+        if (msg.mode === "events") {
+          setEventsInput(msg.text);
+          void executeEventsXmlParse(msg.text, { customTitle: nextTitle, collapseDrawer: true });
+        } else if (msg.mode === "deadlock") {
           setDeadlockInput(msg.text);
           void executeDeadlockParse(msg.text, { customTitle: nextTitle, collapseDrawer: true });
         } else {
@@ -607,29 +765,48 @@ function StudioApp({ wasmUri, iconUri, bootState }: { wasmUri: string; iconUri?:
         }
       } else if (msg.type === "filePicked") {
         const base = msg.name.replace(/\.[^.]+$/, "");
-        if (msg.slot === "plan") {
-          const detected = detectInputMode(msg.text, msg.name);
-          if (detected === "deadlock") {
-            setMode("deadlock");
-            setDeadlockInput(msg.text);
+        if (msg.xelBase64) {
+          setMode("events");
+          setTitle(base);
+          void executeXelParse(fromBase64(msg.xelBase64), { customTitle: base });
+          return;
+        }
+        const pickedText = msg.text ?? "";
+        if (msg.slot === "plan" || msg.slot === "events") {
+          const detected = detectInputMode(pickedText, msg.name);
+          if (detected === "events") {
+            setMode("events");
+            setEventsInput(pickedText);
             setTitle(base);
-            void executeDeadlockParse(msg.text, { customTitle: base });
+            void executeEventsXmlParse(pickedText, { customTitle: base });
+          } else if (detected === "deadlock") {
+            setMode("deadlock");
+            setDeadlockInput(pickedText);
+            setTitle(base);
+            void executeDeadlockParse(pickedText, { customTitle: base });
           } else {
             setMode("plan");
-            setPlanInput(msg.text);
+            setPlanInput(pickedText);
             setTitle(base);
-            void executePlanParse(msg.text, { customTitle: base });
+            void executePlanParse(pickedText, { customTitle: base });
           }
         } else if (msg.slot === "before") {
           setBeforeName(base || "Before");
-          setBeforeInput(msg.text);
+          setBeforeInput(pickedText);
         } else if (msg.slot === "after") {
           setAfterName(base || "After");
-          setAfterInput(msg.text);
+          setAfterInput(pickedText);
         } else if (msg.slot === "deadlock") {
-          setDeadlockInput(msg.text);
-          setTitle(base);
-          void executeDeadlockParse(msg.text, { customTitle: base });
+          if (detectInputMode(pickedText, msg.name) === "events") {
+            setMode("events");
+            setEventsInput(pickedText);
+            setTitle(base);
+            void executeEventsXmlParse(pickedText, { customTitle: base });
+          } else {
+            setDeadlockInput(pickedText);
+            setTitle(base);
+            void executeDeadlockParse(pickedText, { customTitle: base });
+          }
         }
       } else if (msg.type === "requestShareOnline") {
         void handleShareOnline(msg.redact);
@@ -638,7 +815,7 @@ function StudioApp({ wasmUri, iconUri, bootState }: { wasmUri: string; iconUri?:
 
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
-  }, [applyIncomingState, executeDeadlockParse, executePlanParse, handleShareOnline]);
+  }, [applyIncomingState, executeDeadlockParse, executeEventsXmlParse, executePlanParse, executeXelParse, handleShareOnline]);
 
   const handleSwitchMode = (nextMode: StudioMode) => {
     setMode(nextMode);
@@ -654,11 +831,44 @@ function StudioApp({ wasmUri, iconUri, bootState }: { wasmUri: string; iconUri?:
     const matchesActive =
       (nextMode === "plan" && activeView?.kind === "plan") ||
       (nextMode === "compare" && activeView?.kind === "compare") ||
-      (nextMode === "deadlock" && activeView?.kind === "deadlock");
+      (nextMode === "deadlock" && activeView?.kind === "deadlock") ||
+      (nextMode === "events" && activeView?.kind === "events");
     if (!matchesActive) {
       setDrawerOpen(true);
     }
   };
+
+  const handleDropFile = useCallback(
+    async (e: DragEvent<HTMLElement>) => {
+      const file = e.dataTransfer?.files?.[0];
+      if (!file) return;
+      e.preventDefault();
+      const bytes = new Uint8Array(await file.arrayBuffer());
+      const base = file.name.replace(/\.[^.]+$/, "");
+      setTitle(base);
+      if (/\.xel$/i.test(file.name) || hasXelMagic(bytes)) {
+        setMode("events");
+        await executeXelParse(bytes, { customTitle: base });
+        return;
+      }
+      const text = decodeTextBytes(bytes);
+      const detected = detectInputMode(text, file.name);
+      if (detected === "events") {
+        setMode("events");
+        setEventsInput(text);
+        await executeEventsXmlParse(text, { customTitle: base });
+      } else if (detected === "deadlock") {
+        setMode("deadlock");
+        setDeadlockInput(text);
+        await executeDeadlockParse(text, { customTitle: base });
+      } else {
+        setMode("plan");
+        setPlanInput(text);
+        await executePlanParse(text, { customTitle: base });
+      }
+    },
+    [executeDeadlockParse, executeEventsXmlParse, executePlanParse, executeXelParse],
+  );
 
   const handleExport = async (format: "html" | "markdown") => {
     if (!activeView) return;
@@ -686,6 +896,18 @@ function StudioApp({ wasmUri, iconUri, bootState }: { wasmUri: string; iconUri?:
           type: "exportFile",
           format,
           suggestedName: slugifyFileName(titleStr, format === "html" ? "html" : "md"),
+          contents,
+        });
+        return;
+      }
+
+      if (activeView.kind === "events") {
+        const md = buildEventsMarkdown(activeView.batch, activeView.title);
+        const contents = format === "html" ? wrapStandaloneHtml(activeView.title, md) : md;
+        vscodeApi?.postMessage({
+          type: "exportFile",
+          format,
+          suggestedName: slugifyFileName(activeView.title, format === "html" ? "html" : "md"),
           contents,
         });
         return;
@@ -745,7 +967,13 @@ function StudioApp({ wasmUri, iconUri, bootState }: { wasmUri: string; iconUri?:
   }, [activeView]);
 
   return (
-    <div className={`vs-studio vs-theme-${theme}`}>
+    <div
+      className={`vs-studio vs-theme-${theme}`}
+      onDragOver={(e) => {
+        if (e.dataTransfer?.types?.includes("Files")) e.preventDefault();
+      }}
+      onDrop={(e) => void handleDropFile(e)}
+    >
       <header className="vs-toolbar">
         <div className="vs-toolbar-left">
           <div className="vs-brand">
@@ -796,6 +1024,15 @@ function StudioApp({ wasmUri, iconUri, bootState }: { wasmUri: string; iconUri?:
               onClick={() => handleSwitchMode("deadlock")}
             >
               <Lock size={12} /> Deadlock
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={mode === "events"}
+              className={mode === "events" ? "on" : ""}
+              onClick={() => handleSwitchMode("events")}
+            >
+              <Activity size={12} /> Events
             </button>
           </div>
 
@@ -894,7 +1131,7 @@ function StudioApp({ wasmUri, iconUri, bootState }: { wasmUri: string; iconUri?:
               ))}
             </div>
 
-            {mode !== "deadlock" && (
+            {mode !== "deadlock" && mode !== "events" && (
               <select
                 className="vs-select"
                 value={engineChoice}
@@ -1066,6 +1303,41 @@ function StudioApp({ wasmUri, iconUri, bootState }: { wasmUri: string; iconUri?:
               </div>
             </div>
           )}
+
+          {mode === "events" && (
+            <div className="vs-input-stack">
+              <div className="vs-field-head">
+                <label htmlFor="vs-events-textarea">
+                  SQL Server Extended Events (drop or load a binary .xel file, or paste &lt;events&gt; / &lt;RingBufferTarget&gt; XML)
+                </label>
+                <button
+                  type="button"
+                  className="vs-btn vs-btn-ghost vs-btn-sm"
+                  onClick={() => requestHostFilePick("events")}
+                >
+                  <FolderOpen size={12} /> Load .xel / XML...
+                </button>
+              </div>
+              <textarea
+                id="vs-events-textarea"
+                className="vs-textarea"
+                rows={7}
+                value={eventsInput}
+                onChange={(e) => setEventsInput(e.target.value)}
+                placeholder="Paste exported SQL Server Extended Events XML (<events> or <RingBufferTarget>), or click Load .xel / XML to inspect a binary .xel capture..."
+              />
+              <div className="vs-sql-row">
+                <span className="vs-spacer" />
+                <button
+                  type="button"
+                  className="vs-btn vs-btn-primary"
+                  onClick={() => void executeEventsXmlParse(eventsInput)}
+                >
+                  <Play size={13} /> Inspect Events
+                </button>
+              </div>
+            </div>
+          )}
         </section>
       )}
 
@@ -1110,10 +1382,15 @@ function StudioApp({ wasmUri, iconUri, bootState }: { wasmUri: string; iconUri?:
           </div>
         )}
 
+        {activeView?.kind === "events" && mode === "events" && (
+          <ExtendedEventsViewer batch={activeView.batch} theme={theme} />
+        )}
+
         {(!activeView ||
           (mode === "plan" && activeView.kind !== "plan") ||
           (mode === "compare" && activeView.kind !== "compare") ||
-          (mode === "deadlock" && activeView.kind !== "deadlock")) && (
+          (mode === "deadlock" && activeView.kind !== "deadlock") ||
+          (mode === "events" && activeView.kind !== "events")) && (
           <div className="vs-empty-hint">
             <p>
               Runs 100% locally in WebAssembly. Zero database credentials or network uploads required.

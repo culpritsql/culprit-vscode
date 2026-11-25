@@ -1,6 +1,6 @@
 import { randomBytes } from "node:crypto";
 
-export type StudioMode = "plan" | "compare" | "deadlock";
+export type StudioMode = "plan" | "compare" | "deadlock" | "events";
 
 export interface WebviewInitialState {
   kind: "document" | "studio";
@@ -8,6 +8,7 @@ export interface WebviewInitialState {
   title?: string;
   fileName?: string;
   text?: string;
+  xelBase64?: string;
   sql?: string;
   beforeName?: string;
   beforeText?: string;

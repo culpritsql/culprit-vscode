@@ -1,6 +1,6 @@
-import type { Engine } from "@culpritsql/plan-viewer";
+import type { Engine, ExtendedEventsBatch } from "@culpritsql/plan-viewer";
 
-export type ShareStudioMode = "plan" | "compare" | "deadlock";
+export type ShareStudioMode = "plan" | "compare" | "deadlock" | "events";
 
 export interface SharePayloadV1 {
   v: 1;
@@ -14,6 +14,7 @@ export interface SharePayloadV1 {
   nb?: string;
   pb?: string;
   d?: string;
+  eb?: ExtendedEventsBatch;
 }
 
 export const EXPLAIN_ONLINE_ORIGIN = "https://explain.culpritsql.com";
@@ -279,9 +280,50 @@ export function redactPayloadText(text: string): string {
 }
 
 /**
- * Detects whether a document or pasted snippet represents a deadlock report or an execution plan.
+ * Checks whether a byte buffer starts with the SQL Server binary `.xel` file header (`0xEFAB375A` LE).
  */
-export function detectInputMode(content: string, fileName?: string): "deadlock" | "plan" {
+export function hasXelMagic(bytes: Uint8Array): boolean {
+  return (
+    bytes.length >= 4 &&
+    bytes[0] === 0x5a &&
+    bytes[1] === 0x37 &&
+    bytes[2] === 0xab &&
+    bytes[3] === 0xef
+  );
+}
+
+/**
+ * Decodes UTF-8, UTF-16LE, or UTF-16BE text files (common in SSMS XML exports).
+ */
+export function decodeTextBytes(bytes: Uint8Array): string {
+  if (bytes.length >= 2 && bytes[0] === 0xff && bytes[1] === 0xfe) {
+    return new TextDecoder("utf-16le").decode(bytes);
+  }
+  if (bytes.length >= 2 && bytes[0] === 0xfe && bytes[1] === 0xff) {
+    return new TextDecoder("utf-16be").decode(bytes);
+  }
+  return new TextDecoder("utf-8").decode(bytes);
+}
+
+/**
+ * Returns true when XML represents an exported SQL Server Extended Events payload
+ * (`<events>`, `<RingBufferTarget>`, or top-level `<event>`).
+ */
+export function isExtendedEventsXml(content: string): boolean {
+  const body = content.replace(/^\uFEFF?(?:<\?xml[^>]*\?>\s*)?/i, "").trimStart();
+  return /^<(?:events|RingBufferTarget|event\b)/i.test(body);
+}
+
+/**
+ * Detects whether a document or pasted snippet represents Extended Events, a deadlock report, or an execution plan.
+ */
+export function detectInputMode(content: string, fileName?: string): "deadlock" | "events" | "plan" {
+  if (fileName && /\.xel$/i.test(fileName.trim())) {
+    return "events";
+  }
+  if (isExtendedEventsXml(content)) {
+    return "events";
+  }
   if (fileName && /\.xdl$/i.test(fileName.trim())) {
     return "deadlock";
   }
@@ -353,6 +395,7 @@ export interface BuildShareUrlInput {
   afterName?: string;
   afterText?: string;
   deadlockText?: string;
+  eventsBatch?: ExtendedEventsBatch;
   redact?: boolean;
   baseUrl?: string;
 }
@@ -392,6 +435,13 @@ export async function buildShareUrl(
       nb: input.afterName || "After",
       pb,
       q,
+    };
+  } else if (input.mode === "events") {
+    payload = {
+      v: 1,
+      m: "events",
+      t: input.title,
+      eb: input.eventsBatch,
     };
   } else {
     const d = redact ? redactPayloadText(input.deadlockText ?? "") : (input.deadlockText ?? "");
