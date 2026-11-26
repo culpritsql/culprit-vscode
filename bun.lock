@@ -6,7 +6,7 @@
       "name": "culprit-sql",
       "dependencies": {
         "@culpritsql/plan-viewer": "^0.6.0",
-        "@culpritsql/plans": "^0.6.0",
+        "@culpritsql/plans": "^0.6.4",
         "lucide-react": "^1.16.0",
         "react": "^19.2.0",
         "react-dom": "^19.2.0",
@@ -24,7 +24,7 @@
   "packages": {
     "@culpritsql/plan-viewer": ["@culpritsql/plan-viewer@0.6.0", "", { "dependencies": { "lucide-react": "1.68.0" }, "peerDependencies": { "react": "^18.0.0 || ^19.0.0" } }, "sha512-gqy6/0iGLFJ2a5jp9iqWk/W0mnm6afJTx2G8Wml4aFGG+w9sDnPMn2x0RfOW1sGkwfD2bEFaosmrAUx+EvxClQ=="],
 
-    "@culpritsql/plans": ["@culpritsql/plans@0.6.0", "", {}, "sha512-4MdVlouFx6/EDsIPzFUhpr2erV13ZsJ0zUplMDRhGWeOC9+um5mrXRhvgcmqxkb2CzSGQV+H3xBsiTGThO9Ebw=="],
+    "@culpritsql/plans": ["@culpritsql/plans@0.6.4", "", {}, "sha512-9my7er6LkoQRMCLfn+F9UnaxyA8QIA9rSb4/q297HC098aYjMbYTxjv/hGJiAk5IFIDELBb+4xmMMSo4Ix2x3A=="],
 
     "@esbuild/aix-ppc64": ["@esbuild/aix-ppc64@0.25.12", "", { "os": "aix", "cpu": "ppc64" }, "sha512-Hhmwd6CInZ3dwpuGTF8fJG6yoWmsToE+vYgD4nytZVxcu1ulHpUQRAB1UJ8+N1Am3Mz4+xOByoQoSZf4D+CpkA=="],
 
