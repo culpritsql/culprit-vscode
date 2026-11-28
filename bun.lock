@@ -5,8 +5,8 @@
     "": {
       "name": "culprit-sql",
       "dependencies": {
-        "@culpritsql/plan-viewer": "^0.6.3",
-        "@culpritsql/plans": "^0.6.8",
+        "@culpritsql/plan-viewer": "^0.6.5",
+        "@culpritsql/plans": "^0.6.10",
         "lucide-react": "^1.16.0",
         "react": "^19.2.0",
         "react-dom": "^19.2.0",
@@ -22,9 +22,9 @@
     },
   },
   "packages": {
-    "@culpritsql/plan-viewer": ["@culpritsql/plan-viewer@0.6.3", "", { "dependencies": { "lucide-react": "1.68.0" }, "peerDependencies": { "react": "^18.0.0 || ^19.0.0" } }, "sha512-7FlaM/gvw5Pm1ablJKhyMy9RBfOiaRolhuhXAWV1IB3K/y7z8++YazVgZrv9vLYrHdeUNCGJ8+Cin8pxbNPEWw=="],
+    "@culpritsql/plan-viewer": ["@culpritsql/plan-viewer@0.6.5", "", { "dependencies": { "lucide-react": "1.68.0" }, "peerDependencies": { "react": "^18.0.0 || ^19.0.0" } }, "sha512-NhKZGoGUAsDARTYC9dPLF+m7t+6BD1k6d1ByU0RcU7m5Aq7iIgUY48Cu6v6R7FGYf9rWJPLJW8NP7LHutj1rag=="],
 
-    "@culpritsql/plans": ["@culpritsql/plans@0.6.8", "", {}, "sha512-Gk+Hgu3u/0ekYVUpkmRcIzn9xaViei2/Y2hvZNWH0c0VwtYR2EKeac8s28XK6gtdAevR/6QKpKy1nyvJZxvnAA=="],
+    "@culpritsql/plans": ["@culpritsql/plans@0.6.10", "", {}, "sha512-l2AfTAJY+hpFowhRG/4X3mmYcjY1gIZ1s82I57C4gXvvVJtYwLA7a0OPQ7iGJOXuPOAjIOk/oqIwtiLC1pSlWA=="],
 
     "@esbuild/aix-ppc64": ["@esbuild/aix-ppc64@0.25.12", "", { "os": "aix", "cpu": "ppc64" }, "sha512-Hhmwd6CInZ3dwpuGTF8fJG6yoWmsToE+vYgD4nytZVxcu1ulHpUQRAB1UJ8+N1Am3Mz4+xOByoQoSZf4D+CpkA=="],
 
