@@ -5,7 +5,7 @@
     "": {
       "name": "culprit-sql",
       "dependencies": {
-        "@culpritsql/plan-viewer": "^0.6.5",
+        "@culpritsql/plan-viewer": "^0.6.6",
         "@culpritsql/plans": "^0.6.10",
         "lucide-react": "^1.16.0",
         "react": "^19.2.0",
@@ -22,7 +22,7 @@
     },
   },
   "packages": {
-    "@culpritsql/plan-viewer": ["@culpritsql/plan-viewer@0.6.5", "", { "dependencies": { "lucide-react": "1.68.0" }, "peerDependencies": { "react": "^18.0.0 || ^19.0.0" } }, "sha512-NhKZGoGUAsDARTYC9dPLF+m7t+6BD1k6d1ByU0RcU7m5Aq7iIgUY48Cu6v6R7FGYf9rWJPLJW8NP7LHutj1rag=="],
+    "@culpritsql/plan-viewer": ["@culpritsql/plan-viewer@0.6.6", "", { "dependencies": { "lucide-react": "1.68.0" }, "peerDependencies": { "react": "^18.0.0 || ^19.0.0" } }, "sha512-yDAt68ds4gwNR6kwZzjsAReP81SdY58gZ6cW0lVj26VBYY8900UbmCyZyvdhhg58ssVY2ivOjCOiFRNVijVMRg=="],
 
     "@culpritsql/plans": ["@culpritsql/plans@0.6.10", "", {}, "sha512-l2AfTAJY+hpFowhRG/4X3mmYcjY1gIZ1s82I57C4gXvvVJtYwLA7a0OPQ7iGJOXuPOAjIOk/oqIwtiLC1pSlWA=="],
 
